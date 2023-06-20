@@ -154,6 +154,13 @@ interact_plot(test, pred = social_media_minz,  modx = Fronto.parietal_Task_Contr
 
 #SI2. Subregions within the frontoparietal system
 
+test = lmer(NegativeEMA ~ social_media_minz  * FP_A + (social_media_minz  | pID) 
+            + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_long)
+summ(test, digits = 3, confint = TRUE)
+
+test = lmer(NegativeEMA ~ social_media_minz  * FP_B + (social_media_minz  | pID) 
+            + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_long)
+summ(test, digits = 3, confint = TRUE)
 
 
 #SI3. Results using raw scores for the time spent on social media measure
