@@ -10,10 +10,13 @@ library(Rcpp)
 library(lm.beta)
 library(psych)
 library(corrplot)
+library(reshape2)
+
 
 rm(list = ls())
 
 #load data
+
 df_wide <- read.csv("../data/df_wide.csv")
 df_long <- read.csv("../data/df_long.csv")
 
@@ -78,14 +81,21 @@ sd(df_wide$prescan_STAI_sum, na.rm=T)
 test = lm(prescan_CESD_sum ~ Fronto.parietal_Task_Control_withinFC
            + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide)
 summ(test, digits = 3, confint = TRUE)
+summary(test)
+lm.beta(test)
 
 test = lm(prescan_STAI_sum ~ Fronto.parietal_Task_Control_withinFC
           + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide)
 summ(test, digits = 3, confint = TRUE)
+summary(test)
+lm.beta(test)
 
 test = lm(prescan_DERS_mean ~ Fronto.parietal_Task_Control_withinFC
           + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide)
 summ(test, digits = 3, confint = TRUE)
+summary(test)
+lm.beta(test)
+
 
 ####################
 ##### Figure 2 #####
@@ -124,13 +134,30 @@ ggplot (df_wide,aes(Fronto.parietal_Task_Control_withinFC, prescan_DERS_mean))+
 ##### 4.3. Relationships among social media use, functional connectivity, and subsequent negative affect #####
 ##############################################################################################################
 
-test = lmer(NegativeEMA ~ social_media_minz  * Fronto.parietal_Task_Control_withinFC + (social_media_minz  | pID) 
-             + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_long)
+lmer.beta <- function(object) {
+  sdy <- sd(attr(object, "resp")$y) # the y values are now in the 'y' slot 
+  ###                                 of the resp attribute
+  sdx <- apply(attr(object, "pp")$X, 2, sd) # And the X matriz is in the 'X' slot of the pp attr
+  sc <- fixef(object)*sdx/sdy
+  #mimic se.ranef from pacakge "arm"
+  se.fixef <- function(obj) as.data.frame(summary(obj)[10])[,2] # last change - extracting 
+  ##             the standard errors from the summary
+  se <- se.fixef(object)*sdx/sdy
+  return(data.frame(stdcoef=sc, stdse=se))
+}
+
+test = lmer(NegativeEMA ~ social_media_minz  * Fronto.parietal_Task_Control_withinFC + (social_media_minz  | site / pID) 
+            + age + as.factor(gender) + as.factor(race_numeric)  + condition, df_long)
 summ(test, digits = 3, confint = TRUE)
 summary(test)
+lmer.beta(test)
 
 
 #simple slopes analysis
+
+test = lmer(NegativeEMA ~ social_media_minz  * Fronto.parietal_Task_Control_withinFC + (social_media_minz  | pID) 
+            + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_long)
+
 interactions::sim_slopes(model=test, pred=social_media_minz, modx=Fronto.parietal_Task_Control_withinFC,
                          digits = getOption("jtools-digits", default = 3),
                          confint = T)
@@ -152,8 +179,54 @@ interact_plot(test, pred = social_media_minz,  modx = Fronto.parietal_Task_Contr
 ##### Supplementary Information #####
 #####################################
 
-#SI2. Subregions within the frontoparietal system
 
+#SI2 head motion correction
+
+summary(df_wide$average_FD)
+sd(df_wide$average_FD)
+
+summary(df_wide$average_standardized_DVARS)
+sd(df_wide$average_standardized_DVARS)
+
+summary(df_wide$outlier_volume_percentage)
+sd(df_wide$outlier_volume_percentage)
+
+cor.test(df_wide$Fronto.parietal_Task_Control_withinFC, df_wide$average_FD)
+cor.test(df_wide$Fronto.parietal_Task_Control_withinFC, df_wide$average_standardized_DVARS)
+cor.test(df_wide$Fronto.parietal_Task_Control_withinFC, df_wide$outlier_volume_percentage)
+
+
+data_summary <- function(x) {
+  m <- mean(x)
+  ymin <- m-sd(x)
+  ymax <- m+sd(x)
+  return(c(y=m,ymin=ymin,ymax=ymax))
+}
+
+ggplot(melt(df_wide %>% select(average_FD)), 
+             aes(x=variable, y=value,fill=variable))  + 
+  geom_violin(trim=TRUE)+
+  geom_jitter(width = 0.2, height = 0.01,color="#2D81BF") + scale_x_discrete(labels=c('FD')) +
+  ylim(0,0.4) + 
+  scale_fill_brewer(palette="Blues") +  theme_classic() + stat_summary(fun.data=data_summary)+ theme(legend.position = "none")
+
+
+ggplot(melt(df_wide %>% select(average_standardized_DVARS)), 
+       aes(x=variable, y=value,fill=variable))  + 
+  geom_violin(trim=TRUE)+
+  geom_jitter(width = 0.2, height = 0.01,color="#2D81BF") + scale_x_discrete(labels=c('DVARS')) +
+  ylim(1.0,1.6) + 
+  scale_fill_brewer(palette="Blues") +  theme_classic() + stat_summary(fun.data=data_summary)+ theme(legend.position = "none")
+
+
+
+
+#SI4. Subregions within the frontoparietal system
+
+
+test = lmer(NegativeEMA ~ social_media_minz  * FP_B + (social_media_minz  | pID) 
+            + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_long)
+summ(test, digits = 3, confint = TRUE)
 test = lmer(NegativeEMA ~ social_media_minz  * FP_A + (social_media_minz  | pID) 
             + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_long)
 summ(test, digits = 3, confint = TRUE)
@@ -163,22 +236,56 @@ test = lmer(NegativeEMA ~ social_media_minz  * FP_B + (social_media_minz  | pID)
 summ(test, digits = 3, confint = TRUE)
 
 
-#SI3. Results using raw scores for the time spent on social media measure
+
+#SI5. Functional connectivity within visual and auditory systems as control measures
+
+test = lm(prescan_CESD_sum ~ Visual_withinFC
+          + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide)
+summ(test, digits = 3, confint = TRUE)
+test = lm(prescan_CESD_sum ~ Auditory_withinFC
+          + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide)
+summ(test, digits = 3, confint = TRUE)
+
+
+test = lm(prescan_STAI_sum ~ Visual_withinFC
+          + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide)
+summ(test, digits = 3, confint = TRUE)
+test = lm(prescan_STAI_sum ~ Auditory_withinFC
+          + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide)
+summ(test, digits = 3, confint = TRUE)
+
+test = lm(prescan_DERS_mean ~ Visual_withinFC
+          + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide)
+summ(test, digits = 3, confint = TRUE)
+test = lm(prescan_DERS_mean ~ Auditory_withinFC
+          + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide)
+summ(test, digits = 3, confint = TRUE)
+
+test = lmer(NegativeEMA ~ social_media_minz  * Visual_withinFC + (social_media_minz  | pID) 
+            + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_long)
+summ(test, digits = 3, confint = TRUE)
+test = lmer(NegativeEMA ~ social_media_minz  * Auditory_withinFC + (social_media_minz  | pID) 
+            + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_long)
+summ(test, digits = 3, confint = TRUE)
+
+
+
+
+#SI6. Results using raw scores for the time spent on social media measure
 
 test = lmer(NegativeEMA ~ SocialMediaz  * Fronto.parietal_Task_Control_withinFC + (SocialMediaz  | pID) 
             + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_long)
 summ(test, digits = 3, confint = TRUE)
 summary(test)
 
-#SI4 Current positive affect
+#SI7 Current positive affect
 
 test = lmer(PositiveEMA ~ social_media_minz  * Fronto.parietal_Task_Control_withinFC + (social_media_minz  | pID) 
             + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_long)
 summ(test, digits = 3, confint = TRUE)
-summary(test)
 
 
-#SI5. Difficulties in Emotion Regulation (DERS) subscales
+#SI8. Difficulties in Emotion Regulation (DERS) subscales
 
 df_wide$FC = df_wide$Fronto.parietal_Task_Control_withinFC 
 ders = df_wide %>%
@@ -194,7 +301,7 @@ corrplot(M$r, p.mat = M$P, insig = "label_sig",
 cor.test(ders$FC, ders$goals)
 cor.test(ders$FC, ders$strategies)
 
-#SI6. Temporal relationships between time spent on social media and affect
+#SI9. Temporal relationships between time spent on social media and affect
 
 df_long$NegativeEMA_previousz = with(df_long, ave(NegativeEMA_previous, pID, FUN=stdz)) 
 df_long$PositiveEMA_previousz = with(df_long, ave(PositiveEMA_previous, pID, FUN=stdz)) 
@@ -209,7 +316,8 @@ test = lmer(SocialMedia  ~ PositiveEMA_previousz * Fronto.parietal_Task_Control_
 summ(test, digits = 3, confint = TRUE)
 
 
-#SI7.Results not controlling for potential covariates
+#SI10.Potential covariates and confounds
+
 test = lm(prescan_CESD_sum ~ Fronto.parietal_Task_Control_withinFC, df_wide)
 summ(test, digits = 3, confint = TRUE)
 
@@ -223,18 +331,39 @@ test = lmer(NegativeEMA ~ social_media_minz  * Fronto.parietal_Task_Control_with
 summ(test, digits = 3, confint = TRUE)
 
 
+cor.test(df_wide$FC, as.numeric(df_wide$site))
 
-#extra
+cor.test(df_wide$FC, df_wide$age)
+cor.test(df_wide$FC, as.numeric(df_wide$gender))
+cor.test(df_wide$FC, as.numeric(df_wide$race))
+cor.test(df_wide$FC, df_wide$rung_community)
 
-#define a function to get standardized beta from lmer
-lmer.beta <- function(object) {
-  sdy <- sd(attr(object, "resp")$y) # the y values are now in the 'y' slot 
-  ###                                 of the resp attribute
-  sdx <- apply(attr(object, "pp")$X, 2, sd) # And the X matriz is in the 'X' slot of the pp attr
-  sc <- fixef(object)*sdx/sdy
-  #mimic se.ranef from pacakge "arm"
-  se.fixef <- function(obj) as.data.frame(summary(obj)[10])[,2] # last change - extracting 
-  ##             the standard errors from the summary
-  se <- se.fixef(object)*sdx/sdy
-  return(data.frame(stdcoef=sc, stdse=se))
-}
+
+test = lmer(NegativeEMA ~ social_media_minz  * Fronto.parietal_Task_Control_withinFC + (social_media_minz  | site / pID) 
+            + age + as.factor(gender) + as.factor(race_numeric)  + condition, df_long)
+summ(test, digits = 3, confint = TRUE)
+summary(test)
+
+
+
+# SI11. correction for multiple comparisons
+
+summary(lm(prescan_CESD_sum ~ Fronto.parietal_Task_Control_withinFC
+          + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide))
+summary(lm(prescan_STAI_sum ~ Fronto.parietal_Task_Control_withinFC
+          + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide))
+summary(lm(prescan_DERS_mean ~ Fronto.parietal_Task_Control_withinFC
+          + age + as.factor(gender) + as.factor(race_numeric) + rung_community + condition, df_wide))
+
+p = c(0.00608,0.035147,0.036156)
+round(p.adjust(p, "fdr"), 3)
+
+
+
+interactions::sim_slopes(model=test, pred=social_media_minz, modx=Fronto.parietal_Task_Control_withinFC,
+                         digits = getOption("jtools-digits", default = 3),
+                         confint = T)
+
+p = c(0.001,0.017,0.892)
+round(p.adjust(p, "fdr"), 3)
+
